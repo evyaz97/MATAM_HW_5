@@ -248,8 +248,10 @@ class MatamazonSystem:
         Notes:
             - The specification assumes quantity is an integer.
         """
-        if customer_id not in self.customers or product_id not in self.products:
-            raise InvalidIdException("Customer or Product missing")
+        if product_id not in self.products:
+            return "The product does not exist in the system"
+        if customer_id not in self.customers:
+            raise InvalidIdException("Customer missing")
         product = self.products[product_id]
         if product.quantity >= quantity:
             product.quantity -= quantity
@@ -282,29 +284,32 @@ class MatamazonSystem:
                   in the system (i.e., orders that were not removed).
                 - Additional InvalidIdException conditions as required by specification.
         """
-        if not isinstance(id, int) or id < 0: raise InvalidIdException("Invalid ID")
+        if not isinstance(_id, int) or _id < 0: raise InvalidIdException("Invalid ID")
         class_type = class_type.strip().lower()
 
         if class_type == 'order':
-            if id not in self.orders: raise InvalidIdException("Order not found")
-            order = self.orders.pop(id)
+            if _id not in self.orders: raise InvalidIdException("Order not found")
+            order = self.orders.pop(_id)
             if order.product_id in self.products:
                 self.products[order.product_id].quantity += order.quantity
+            return order.quantity
         elif class_type == 'customer':
-            if id not in self.customers: raise InvalidIdException("Customer not found")
-            if any(o.customer_id == id for o in self.orders.values()): raise InvalidIdException(
+            if _id not in self.customers: raise InvalidIdException("Customer not found")
+            if any(o.customer_id == _id for o in self.orders.values()): raise InvalidIdException(
                 "Customer has existing order")
-            self.customers.pop(id)
+            self.customers.pop(_id)
         elif class_type == 'supplier':
-            if id not in self.suppliers: raise InvalidIdException("Supplier not found")
-            if any(self.products.get(o.product_id, Product(0, '', 0, 0, 0)).supplier_id == id for o in
+            if _id not in self.suppliers: raise InvalidIdException("Supplier not found")
+            if any(self.products.get(o.product_id, Product(0, '', 0, 0, 0)).supplier_id == _id for o in
                    self.orders.values()):
                 raise InvalidIdException("Supplier has active order")
-            self.suppliers.pop(id)
+            self.suppliers.pop(_id)
         elif class_type == 'product':
-            if id not in self.products: raise InvalidIdException("Product not found")
-            if any(o.product_id == id for o in self.orders.values()): raise InvalidIdException("Product in order")
-            self.products.pop(id)
+            if _id not in self.products: raise InvalidIdException("Product not found")
+            if any(o.product_id == _id for o in self.orders.values()): raise InvalidIdException("Product in order")
+            self.products.pop(_id)
+        else:
+            raise InvalidIdException("Unknown class type")
 
     def search_products(self, query, max_price=None):
         """
@@ -398,25 +403,25 @@ def load_system_from_file(path):
     """
     sys_obj = MatamazonSystem()
     with open(path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try:
-                obj = eval(line)
-                if isinstance(obj, Customer):
-                    sys_obj.register_entity(obj, True)
-                elif isinstance(obj, Supplier):
-                    sys_obj.register_entity(obj, False)
-                elif isinstance(obj, Product):
-                    sys_obj.add_or_update_product(obj)
-            except Exception as e:
-                raise e
+        lines = [line.strip() for line in f if line.strip()]
+
+    for line in lines:  # Pass 1: Customers and Suppliers
+        obj = eval(line)
+        if isinstance(obj, Customer):
+            sys_obj.register_entity(obj, True)
+        elif isinstance(obj, Supplier):
+            sys_obj.register_entity(obj, False)
+
+    for line in lines:  # Pass 2: Products
+        obj = eval(line)
+        if isinstance(obj, Product): sys_obj.add_or_update_product(obj)
+
     return sys_obj
 
 class CustomParser(argparse.ArgumentParser):
     def error(self, message):
         print(
-            "Usage: python3 matamazon.py -l <matamazon_log> -s <matamazon_system> -o <output_file> -os <out_matamazon_system>",
+            "Usage: python3 matamazon.py -l < matamazon_log > -s < matamazon_system > -o < output_file > -os < out_matamazon_system >",
             file=sys.stderr)
         sys.exit(1)
 
@@ -434,8 +439,7 @@ def main():
             raise ValueError("Unknown arguments")
     except Exception:
         print(
-            "Usage: python3 matamazon.py -l <matamazon_log> -s <matamazon_system> -o <output_file> -os <out_matamazon_system>",
-            file=sys.stderr)
+            "Usage: python3 matamazon.py -l < matamazon_log > -s < matamazon_system > -o < output_file > -os < out_matamazon_system >",            file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -476,7 +480,7 @@ def main():
 
     except Exception:
         print("The matamazon script has encountered an error")
-        sys.exit(1)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
